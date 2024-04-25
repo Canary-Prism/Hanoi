@@ -1,6 +1,10 @@
 # Hanoi
 
+
 i just thought it would look cool (again)
+
+<img src="https://media1.tenor.com/m/0pnQabk3vHUAAAAC/mewo-omori.gif" />
+^ unrelated emotional support Mewo
 
 ### [Download](https://github.com/Canary-Prism/Hanoi/releases/)
 
