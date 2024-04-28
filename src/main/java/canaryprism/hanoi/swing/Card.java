@@ -9,7 +9,7 @@ import java.awt.Color;
 
 import com.formdev.flatlaf.ui.FlatBorder;
 
-public class Card extends JComponent {
+public final class Card extends Item {
 
     private final JLabel label;
     public Card(int number) {

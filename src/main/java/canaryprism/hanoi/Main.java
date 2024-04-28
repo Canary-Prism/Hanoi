@@ -2,6 +2,7 @@ package canaryprism.hanoi;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 import javax.swing.JFrame;
 
@@ -12,12 +13,18 @@ import canaryprism.hanoi.swing.StackPlayer;
 public class Main {
     public static void main(String[] args) {
 
-        if (args.length != 1) {
+        if (args.length < 1) {
             System.err.println("Error: expected 1 argument (int), got " + args.length + " arguments.");
             System.exit(1);
         }
 
         final int n = Integer.parseInt(args[0]);
+
+        boolean chaos = false;
+
+        if (args.length >= 2) {
+            chaos = args[1].equals("-c");
+        }
 
         FlatMacDarkLaf.setup();
         var frame = new JFrame();
@@ -40,16 +47,23 @@ public class Main {
         }
 
 
+        CompletableFuture<Void> last = null;
         for (int i = n; i > 0; i--) {
-            player.newCard(i, 0).join();
+            last = player.newCard(i, 0);
+            if (!chaos)
+                last.join();
         }
 
 
         var moves = hanoi(n, 0, 2);
 
         for (var move : moves) {
-            player.moveCard(move.from, move.to).join();
+            last = player.moveCard(move.from, move.to);
+            if (!chaos)
+                last.join();
         }
+
+        last.join();
 
         player.close();
     }

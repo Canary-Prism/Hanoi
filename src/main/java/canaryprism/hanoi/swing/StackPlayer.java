@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.awt.Point;
 import java.awt.Rectangle;
@@ -19,6 +21,8 @@ public class StackPlayer extends JComponent implements AutoCloseable {
 
     private volatile boolean running = true;
     private volatile int current_animations = 0;
+
+    private final ExecutorService executor = Executors.newCachedThreadPool();
 
     public StackPlayer(double fps) {
         setLayout(null);
@@ -43,9 +47,9 @@ public class StackPlayer extends JComponent implements AutoCloseable {
         }, "StackPlayer").start();
     }
 
-    private final List<Card> stack_a = new ArrayList<>();
-    private final List<Card> stack_b = new ArrayList<>();
-    private final List<Card> stack_c = new ArrayList<>();
+    private final List<Item> stack_a = new ArrayList<>();
+    private final List<Item> stack_b = new ArrayList<>();
+    private final List<Item> stack_c = new ArrayList<>();
 
     private final List<Card> moving = new ArrayList<>();
 
@@ -87,45 +91,51 @@ public class StackPlayer extends JComponent implements AutoCloseable {
 
         int index;
 
+        CompletableFuture<Void> future = null;
+
         synchronized (moving) {
             moving.add(card);
             index = target.size();
-            target.add(null);
+
+            future = CompletableFuture.runAsync(() -> {
+
+                for (int i = 0; i < steps; i++) {
+                    path[i] = new Point(
+                        card.getBounds().x + (int) (xdistance * i / steps),
+                        card.getBounds().y + (int) (ydistance * i / steps)
+                    );
+                }
+
+                current_animations++;
+
+                for (int i = 0; i < steps; i++) {
+
+                    card.setBounds(path[i].x, path[i].y, card_width, card_height);
+                    // repaint();
+                    try {
+                        Thread.sleep((long) dt);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                card.setBounds(destx, desty, card_width, card_height);
+
+                synchronized (moving) {
+                    moving.remove(card);
+                    target.set(index, card);
+                }
+                
+                current_animations--;
+
+                repaint();
+            }, executor);
+
+            var future_card = new FutureCard(future);
+            target.add(future_card);
         }
 
-        return CompletableFuture.runAsync(() -> {
-
-            for (int i = 0; i < steps; i++) {
-                path[i] = new Point(
-                    card.getBounds().x + (int) (xdistance * i / steps),
-                    card.getBounds().y + (int) (ydistance * i / steps)
-                );
-            }
-
-            current_animations++;
-
-            for (int i = 0; i < steps; i++) {
-
-                card.setBounds(path[i].x, path[i].y, card_width, card_height);
-                // repaint();
-                try {
-                    Thread.sleep((long) dt);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            card.setBounds(destx, desty, card_width, card_height);
-
-            synchronized (moving) {
-                moving.remove(card);
-                target.set(index, card);
-            }
-            
-            current_animations--;
-
-            repaint();
-        });
+        return future;
     }
 
 
@@ -151,8 +161,14 @@ public class StackPlayer extends JComponent implements AutoCloseable {
             throw new IllegalArgumentException("Same stack");
         }
 
-        var card = from.getLast();
+        var maybe_card = from.getLast();
 
+        if (maybe_card instanceof FutureCard future) {
+            future.getFuture().join();
+            maybe_card = from.getLast();
+        }
+
+        final var card = (Card) maybe_card;
         final var travel_time = 200.0;
 
         var steps = (int) (travel_time / dt);
@@ -167,52 +183,57 @@ public class StackPlayer extends JComponent implements AutoCloseable {
 
         int index;
 
+        CompletableFuture<Void> future = null;
+
         synchronized (moving) {
             moving.add(card);
             from.remove(card);
             index = to.size();
-            to.add(null);
+
+            future = CompletableFuture.runAsync(() -> {
+
+                for (int i = 0; i < steps; i++) {
+                    path[i] = new Point(
+                            card.getBounds().x + (int) (xdistance * i / steps),
+                            card.getBounds().y + (int) (ydistance * i / steps));
+                }
+
+                current_animations++;
+
+                for (int i = 0; i < steps; i++) {
+
+                    card.setBounds(path[i].x, path[i].y, card_width, card_height);
+                    // repaint();
+                    try {
+                        Thread.sleep((long) dt);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+                }
+
+                card.setBounds(destx, desty, card_width, card_height);
+
+                synchronized (moving) {
+                    moving.remove(card);
+                    to.set(index, card);
+                }
+
+                current_animations--;
+
+                repaint();
+            }, executor);
+
+            var future_card = new FutureCard(future);
+            to.add(future_card);
         }
 
-        return CompletableFuture.runAsync(() -> {
-
-            for (int i = 0; i < steps; i++) {
-                path[i] = new Point(
-                    card.getBounds().x + (int) (xdistance * i / steps),
-                    card.getBounds().y + (int) (ydistance * i / steps)
-                );
-            }
-
-            current_animations++;
-
-            for (int i = 0; i < steps; i++) {
-
-                card.setBounds(path[i].x, path[i].y, card_width, card_height);
-                // repaint();
-                try {
-                    Thread.sleep((long) dt);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-
-            card.setBounds(destx, desty, card_width, card_height);
-
-            synchronized (moving) {
-                moving.remove(card);
-                to.set(index, card);
-            }
-            
-            current_animations--;
-
-            repaint();
-        });
+        return future;
     }
 
 
     @Override
     protected void paintChildren(java.awt.Graphics g) {
-        Consumer<Card> painter = (card) -> {
+        Consumer<Item> painter = (card) -> {
 
             if (card == null) {
                 return;
